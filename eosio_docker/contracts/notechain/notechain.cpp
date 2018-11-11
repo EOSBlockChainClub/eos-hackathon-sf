@@ -112,6 +112,8 @@ CONTRACT notechain : public eosio::contract {
         new_chat.user_two_staked    = stake_requirement;
         new_chat.response_window    = response_window;
         new_chat.expiration_time    = expiration_time;
+        new_chat.user_one_last_message_time = now();
+        new_chat.user_two_last_message_time = now();
       });
       print("Chat created\n");
 
@@ -160,8 +162,77 @@ CONTRACT notechain : public eosio::contract {
 
       auto &chat = _chats.get(chat_id);
 
+      eosio_assert(now() >= chat.expiration_time, "Chat has not expired yet");
 
+      eosio_assert( chat.user_one == user || chat.user_two == user, "user sending txn is not a participant in the chat" );
 
+      if (chat.user_one_last_message_time > chat.user_two_last_message_time) {
+        print("user one sent the last message\n");
+        action(
+          permission_level{ _self, name("active") },
+          name("eosio.token"), name("transfer"),
+          std::make_tuple(_self, chat.user_one, asset(chat.user_one_staked, symbol(std::string("SYS"), 4)), std::string("Staking refund for user 1"))
+        ).send();
+
+        if (chat.user_two_last_message_time + chat.response_window >= chat.expiration_time) {
+          print("user two gets refund\n");
+          action(
+            permission_level{ _self, name("active") },
+            name("eosio.token"), name("transfer"),
+            std::make_tuple(_self, chat.user_two, asset(chat.user_two_staked, symbol(std::string("SYS"), 4)), std::string("Staking refund for user 2"))
+          ).send();
+        } else {
+          print("user two gets slashed\n");
+          action(
+            permission_level{ _self, name("active") },
+            name("eosio.token"), name("transfer"),
+            std::make_tuple(_self, chat.user_one, asset(chat.user_two_staked, symbol(std::string("SYS"), 4)), std::string("Slashing stake for user two to user one"))
+          ).send();
+        }
+
+      } else if (chat.user_two_last_message_time > chat.user_one_last_message_time) {
+        print("user two sent the last message\n");
+        action(
+          permission_level{ _self, name("active") },
+          name("eosio.token"), name("transfer"),
+          std::make_tuple(_self, chat.user_two, asset(chat.user_two_staked, symbol(std::string("SYS"), 4)), std::string("Staking refund for user 2"))
+        ).send();
+
+        if (chat.user_one_last_message_time + chat.response_window >= chat.expiration_time) {
+          print("user one gets refund\n");
+         action(
+            permission_level{ _self, name("active") },
+            name("eosio.token"), name("transfer"),
+            std::make_tuple(_self, chat.user_one, asset(chat.user_one_staked, symbol(std::string("SYS"), 4)), std::string("Staking refund for user 1"))
+          ).send();
+        } else {
+          print("user one gets slashed\n");
+          action(
+            permission_level{ _self, name("active") },
+            name("eosio.token"), name("transfer"),
+            std::make_tuple(_self, chat.user_two, asset(chat.user_one_staked, symbol(std::string("SYS"), 4)), std::string("Slashing stake for user one to user two"))
+          ).send();
+        }
+
+      } else {
+
+        print("user one and two sent their last messages at the same time.  refund both, i guess");
+        action(
+          permission_level{ _self, name("active") },
+          name("eosio.token"), name("transfer"),
+          std::make_tuple(_self, chat.user_one, asset(chat.user_one_staked, symbol(std::string("SYS"), 4)), std::string("Staking refund for user 1"))
+        ).send();
+        action(
+          permission_level{ _self, name("active") },
+          name("eosio.token"), name("transfer"),
+          std::make_tuple(_self, chat.user_two, asset(chat.user_two_staked, symbol(std::string("SYS"), 4)), std::string("Staking refund for user 2"))
+        ).send();
+      }
+      // replay protection
+      _chats.modify( chat, _self, [&]( auto& modified_user ) {
+        modified_user.user_one_staked = 0;
+        modified_user.user_two_staked = 0;
+      });
     }
 
     ACTION sendmessage( name user, uint64_t chat_id, std::string message ) {
@@ -173,15 +244,25 @@ CONTRACT notechain : public eosio::contract {
       auto &chat = _chats.get(chat_id);
 
       if (user == chat.user_one) {
-        _chats.modify( chat, _self, [&]( auto& modified_user ) {
-          modified_user.user_one_last_message_time = now();
-        });
-        print("user one last message time updated\n");
+        // only update their last_message_time if the chat response window has not been exceeded
+        if (now() <= chat.user_two_last_message_time + chat.response_window){
+          _chats.modify( chat, _self, [&]( auto& modified_user ) {
+            modified_user.user_one_last_message_time = now();
+          });
+          print("user one last message time updated\n");
+        } else {
+          print("user one last message time NOT updated because response window exceeded\n");
+        }
       } else if (user == chat.user_two) {
-        _chats.modify( chat, _self, [&]( auto& modified_user ) {
-          modified_user.user_one_last_message_time = now();
-        });
-        print("user two last message time updated\n");
+        // only update their last_message_time if the chat response window has not been exceeded
+        if (now() <= chat.user_one_last_message_time + chat.response_window){
+          _chats.modify( chat, _self, [&]( auto& modified_user ) {
+            modified_user.user_two_last_message_time = now();
+          });
+          print("user two last message time updated\n");
+        } else {
+          print("user two last message time NOT updated because response window exceeded\n");
+        }
       } else {
         print("neither user last message time updated :-O\n");
         eosio_assert( false, "user sending txn is not a participant in the chat" );
@@ -200,4 +281,4 @@ CONTRACT notechain : public eosio::contract {
 };
 
 // specify the contract name, and export a public action: update
-EOSIO_DISPATCH( notechain, (create)(sendmessage) )
+EOSIO_DISPATCH( notechain, (create)(sendmessage)(retrievestake) )

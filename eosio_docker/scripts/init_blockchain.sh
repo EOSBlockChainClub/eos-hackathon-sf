@@ -85,6 +85,10 @@ cleos push action eosio.token issue '[ "useraaaaaaaa", "100.0000 SYS", "memo" ]'
 echo "=== sending tokens to acct2 ==="
 cleos push action eosio.token issue '[ "useraaaaaaab", "100.0000 SYS", "memo" ]' -p eosio
 
+echo "=== giving notechainacct permission to send it's own tokens?  i guess? ==="
+
+cleos set account permission notechainacc active '{"threshold": 1,"keys": [{"key": "EOS5xuM3PrBbFBRXf9hPQA3fDHYzjtKyvD31iqsgsPhtJRZt8yHVj","weight": 1}, {"key": "EOS6QUsRZsW7Yi47ExfW8cKBJ6q8XHT9UFAjRgpnQTj1Cikn9Pm4i","weight": 1}],"accounts": [{"permission":{"actor":"notechainacc","permission":"eosio.code"},"weight":1}]}' owner -p $name
+
 # cleos wallet import --private-key 5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5
 # cleos wallet import --private-key 5KLqT1UFxVnKRWkjvhFur4sECrPhciuUqsYRihc1p9rxhXQMZBg
 

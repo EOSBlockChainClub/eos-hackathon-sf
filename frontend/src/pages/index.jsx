@@ -59,6 +59,7 @@ class Index extends Component {
     };
     this.handleFormEvent = this.handleFormEvent.bind(this);
     this.handleSendMessageFormEvent = this.handleSendMessageFormEvent.bind(this);
+    this.handleRetrieveStakeFormEvent = this.handleRetrieveStakeFormEvent.bind(this);
 
     window.eosRpc = new JsonRpc(endpoint);
     const signatureProvider = new JsSignatureProvider(['5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5']);
@@ -89,8 +90,8 @@ class Index extends Component {
           user: account,
           user_two: accountTwo,
           stake_requirement: 10 * Math.pow(10,4), // 10.0000
-          response_window: 60, // 1 minute in seconds
-          expiration_time: parseInt(new Date().getTime() / 1000) + 60 * 60 // 60 minutes
+          response_window: 30, // 1 minute in seconds
+          expiration_time: parseInt(new Date().getTime() / 1000) + 60 * 2 // 2 minutes
         };
         break;
       default:
@@ -126,6 +127,63 @@ class Index extends Component {
       }
     }
   }
+
+  async handleRetrieveStakeFormEvent(event) {
+    // stop default behaviour
+    event.preventDefault();
+
+    // collect form data
+    let account = event.target.account.value;
+    let privateKey = event.target.privateKey.value;
+    let chatId = event.target.chatId.value;
+
+    // prepare variables for the switch below to send transactions
+    let actionName = "";
+    let actionData = {};
+
+    // define actionName and action according to event type
+    switch (event.type) {
+      case "submit":
+        actionName = "retrievestake";
+        actionData = {
+          user: account,
+          chat_id: chatId,
+        };
+        break;
+      default:
+        return;
+    }
+
+    // eosjs function call: connect to the blockchain
+    const rpc = new JsonRpc(endpoint);
+    const signatureProvider = new JsSignatureProvider([privateKey]);
+    const api = new Api({ rpc, signatureProvider, textDecoder: new TextDecoder(), textEncoder: new TextEncoder() });
+    try {
+      const result = await api.transact({
+        actions: [{
+          account: "notechainacc",
+          name: actionName,
+          authorization: [{
+            actor: account,
+            permission: 'active',
+          }],
+          data: actionData,
+        }]
+      }, {
+        blocksBehind: 3,
+        expireSeconds: 30,
+      });
+
+      console.log(result);
+      this.getTable();
+    } catch (e) {
+      console.log('Caught exception: ' + e);
+      if (e instanceof RpcError) {
+        console.log(JSON.stringify(e.json, null, 2));
+      }
+    }
+  }
+
 
   async handleSendMessageFormEvent(event) {
     // stop default behaviour
@@ -267,7 +325,7 @@ class Index extends Component {
               label="From Account"
               margin="normal"
               fullWidth
-              value='useraaaaaaaa'
+              defaultValue='useraaaaaaaa'
             />
             <TextField
               name="privateKey"
@@ -275,7 +333,7 @@ class Index extends Component {
               label="From Private key"
               margin="normal"
               fullWidth
-              value='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
+              defaultValue='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
             />
             <TextField
               name="accountTwo"
@@ -283,7 +341,7 @@ class Index extends Component {
               label="To Account"
               margin="normal"
               fullWidth
-              value='useraaaaaaab'
+              defaultValue='useraaaaaaab'
             />
             {/*<TextField
               name="note"
@@ -313,7 +371,7 @@ class Index extends Component {
               label="From Account"
               margin="normal"
               fullWidth
-              value='useraaaaaaaa'
+              defaultValue='useraaaaaaaa'
             />
             <TextField
               name="privateKey"
@@ -321,7 +379,7 @@ class Index extends Component {
               label="From Private key"
               margin="normal"
               fullWidth
-              value='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
+              defaultValue='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
             />
             <TextField
               name="chatId"
@@ -329,7 +387,7 @@ class Index extends Component {
               label="Chat ID"
               margin="normal"
               fullWidth
-              value={0}
+              defaultValue={0}
             />
             <TextField
               name="message"
@@ -346,6 +404,43 @@ class Index extends Component {
               className={classes.formButton}
               type="submit">
               Send Message
+            </Button>
+          </form>
+        </Paper>
+
+        <Paper className={classes.paper}>
+          <h1>Retrieve Stake</h1>
+          <form onSubmit={this.handleRetrieveStakeFormEvent}>
+            <TextField
+              name="account"
+              autoComplete="off"
+              label="From Account"
+              margin="normal"
+              fullWidth
+              defaultValue='useraaaaaaaa'
+            />
+            <TextField
+              name="privateKey"
+              autoComplete="off"
+              label="From Private key"
+              margin="normal"
+              fullWidth
+              defaultValue='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
+            />
+            <TextField
+              name="chatId"
+              autoComplete="off"
+              label="Chat ID"
+              margin="normal"
+              fullWidth
+              defaultValue={0}
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              className={classes.formButton}
+              type="submit">
+              Retrieve Stake
             </Button>
           </form>
         </Paper>
