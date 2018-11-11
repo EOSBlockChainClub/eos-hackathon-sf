@@ -12,6 +12,10 @@ import CardContent from '@material-ui/core/CardContent';
 import TextField from '@material-ui/core/TextField';
 import Paper from '@material-ui/core/Paper';
 import Button from '@material-ui/core/Button';
+import MenuItem from '@material-ui/core/MenuItem';
+import FormControl from '@material-ui/core/FormControl';
+import Select from '@material-ui/core/Select';
+import InputLabel from '@material-ui/core/InputLabel';
 
 // eosio endpoint
 const endpoint = "http://localhost:8888";
@@ -46,6 +50,10 @@ const styles = theme => ({
     padding: 10,
     marginBottom: 0,
   },
+  formControl: {
+    margin: theme.spacing.unit,
+    minWidth: 120,
+  },
 });
 
 // Index component
@@ -55,7 +63,9 @@ class Index extends Component {
     super(props)
     this.state = {
       noteTable: [], // to store the table rows from smart contract
-      chats: []
+      chats: [],
+      account: 0,
+      accountBalance: 0
     };
     this.handleFormEvent = this.handleFormEvent.bind(this);
     this.handleSendMessageFormEvent = this.handleSendMessageFormEvent.bind(this);
@@ -64,6 +74,15 @@ class Index extends Component {
     window.eosRpc = new JsonRpc(endpoint);
     const signatureProvider = new JsSignatureProvider(['5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5']);
     window.eosApi = new Api({ rpc: window.eosRpc, signatureProvider, textDecoder: new TextDecoder(), textEncoder: new TextEncoder() });
+    this.getBalance(accounts[0].name)
+    .then(balance => {
+      console.log(balance)
+      this.setState({accountBalance: balance})
+    })
+  }
+
+  async getBalance(user){
+    return await window.eosApi.rpc.get_currency_balance('eosio.token', user, 'SYS')
   }
 
   // generic function to handle form events (e.g. "submit" / "reset")
@@ -73,8 +92,8 @@ class Index extends Component {
     event.preventDefault();
 
     // collect form data
-    let account = event.target.account.value;
-    let privateKey = event.target.privateKey.value;
+    let account = accounts[this.state.account].name;
+    let privateKey = accounts[this.state.account].privateKey;
     let accountTwo = event.target.accountTwo.value;
     // console.log(`private key is ${privateKey}`)
 
@@ -133,8 +152,8 @@ class Index extends Component {
     event.preventDefault();
 
     // collect form data
-    let account = event.target.account.value;
-    let privateKey = event.target.privateKey.value;
+    let account = accounts[this.state.account].name;
+    let privateKey = accounts[this.state.account].privateKey;
     let chatId = event.target.chatId.value;
 
     // prepare variables for the switch below to send transactions
@@ -190,8 +209,8 @@ class Index extends Component {
     event.preventDefault();
 
     // collect form data
-    let account = event.target.account.value;
-    let privateKey = event.target.privateKey.value;
+    let account = accounts[this.state.account].name;
+    let privateKey = accounts[this.state.account].privateKey;
     let chatId = event.target.chatId.value;
     let message = event.target.message.value;
 
@@ -273,6 +292,15 @@ class Index extends Component {
     });
   }
 
+  handleAccountChange(event){
+    this.setState({account: event.target.value});
+    this.getBalance(accounts[event.target.value].name)
+    .then(balance => {
+      console.log(balance)
+      this.setState({accountBalance: balance})
+    })
+  }
+
   componentDidMount() {
     this.getTable();
   }
@@ -289,12 +317,16 @@ class Index extends Component {
         <Card className={classes.card} key={key}>
           <CardContent>
             <Typography variant="headline" component="h2">
-              {user}
+              From: {user}
             </Typography>
             <Typography style={{fontSize:12}} color="textSecondary" gutterBottom>
               {`Chat ID: ${chat_id} - Between ${chat.user_one} and ${chat.user_two}`}
               <br/>
-              {`Sent at ${new Date(timestamp*1000).toString()}`}
+              {`Tokens staked: ${chat.stake_requirement / 10000} - Response window: ${chat.response_window} seconds`}
+              <br/>
+              {`Expires at ${new Date(chat.expiration_time*1000).toLocaleString()}`}
+              <br/>
+              {`Sent at ${new Date(timestamp*1000).toLocaleString()}`}
             </Typography>
             <Typography component="pre">
               {note}
@@ -313,28 +345,38 @@ class Index extends Component {
             <Typography variant="title" color="inherit">
               Note Chain
             </Typography>
+            <FormControl className={classes.formControl}>
+              <InputLabel htmlFor="account">Sending Account</InputLabel>
+              <Select
+                value={this.state.account}
+                onChange={this.handleAccountChange.bind(this)}
+                inputProps={{
+                  name: 'account',
+                  id: 'account',
+                }}
+              >
+                {accounts.map((a, idx) =>
+                  <MenuItem key={"acct_"+idx} value={idx}>{a.name}</MenuItem>
+                )}
+              </Select>
+            </FormControl>
+            Account balance: {this.state.accountBalance}
           </Toolbar>
         </AppBar>
+        <Paper className={classes.paper}>
+          <h1>What is this?</h1>
+          <p>This is a chat system that requires both parties to deposit a token stake.  If either party is unresponsive, they can lose their stake.  The chat will expire after a certain time and as long as both parties have been sufficiently responsive, they both get their stake back.</p>
+
+          <p>For this demo, there is a 30 second response window, and the chat expires after 2 minutes.  Typically you would have something like a 3 day response window and the chat would last the duration of a contracting gig.</p>
+
+          <p>The use case for this is for a chat between freelancing contractors and clients.  It's useful because both parties being responsive leads to much more successful projects.</p>
+
+          <p>To use this, create a chat between two parties using the "create chat" form below.  Then, you can send messages between then. You can control who is sending the message using the dropdown at the top of the page.  Once the chat has expired, you can attempt to retrieve your stake.  If you have been responsive, you will get it back.  If you have not, it will be sent to the other party</p>
+        </Paper>
         {noteCards}
         <Paper className={classes.paper}>
           <h1>Create Chat</h1>
           <form onSubmit={this.handleFormEvent}>
-            <TextField
-              name="account"
-              autoComplete="off"
-              label="From Account"
-              margin="normal"
-              fullWidth
-              defaultValue='useraaaaaaaa'
-            />
-            <TextField
-              name="privateKey"
-              autoComplete="off"
-              label="From Private key"
-              margin="normal"
-              fullWidth
-              defaultValue='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
-            />
             <TextField
               name="accountTwo"
               autoComplete="off"
@@ -343,15 +385,6 @@ class Index extends Component {
               fullWidth
               defaultValue='useraaaaaaab'
             />
-            {/*<TextField
-              name="note"
-              autoComplete="off"
-              label="Note (Optional)"
-              margin="normal"
-              multiline
-              rows="10"
-              fullWidth
-            />*/}
             <Button
               variant="contained"
               color="primary"
@@ -361,26 +394,10 @@ class Index extends Component {
             </Button>
           </form>
         </Paper>
-
+        <br/>
         <Paper className={classes.paper}>
           <h1>Send Message</h1>
           <form onSubmit={this.handleSendMessageFormEvent}>
-            <TextField
-              name="account"
-              autoComplete="off"
-              label="From Account"
-              margin="normal"
-              fullWidth
-              defaultValue='useraaaaaaaa'
-            />
-            <TextField
-              name="privateKey"
-              autoComplete="off"
-              label="From Private key"
-              margin="normal"
-              fullWidth
-              defaultValue='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
-            />
             <TextField
               name="chatId"
               autoComplete="off"
@@ -407,26 +424,10 @@ class Index extends Component {
             </Button>
           </form>
         </Paper>
-
+        <br/>
         <Paper className={classes.paper}>
           <h1>Retrieve Stake</h1>
           <form onSubmit={this.handleRetrieveStakeFormEvent}>
-            <TextField
-              name="account"
-              autoComplete="off"
-              label="From Account"
-              margin="normal"
-              fullWidth
-              defaultValue='useraaaaaaaa'
-            />
-            <TextField
-              name="privateKey"
-              autoComplete="off"
-              label="From Private key"
-              margin="normal"
-              fullWidth
-              defaultValue='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
-            />
             <TextField
               name="chatId"
               autoComplete="off"
