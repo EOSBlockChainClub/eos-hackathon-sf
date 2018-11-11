@@ -54,9 +54,15 @@ class Index extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      noteTable: [] // to store the table rows from smart contract
+      noteTable: [], // to store the table rows from smart contract
+      chats: []
     };
     this.handleFormEvent = this.handleFormEvent.bind(this);
+    this.handleSendMessageFormEvent = this.handleSendMessageFormEvent.bind(this);
+
+    window.eosRpc = new JsonRpc(endpoint);
+    const signatureProvider = new JsSignatureProvider(['5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5']);
+    window.eosApi = new Api({ rpc: window.eosRpc, signatureProvider, textDecoder: new TextDecoder(), textEncoder: new TextEncoder() });
   }
 
   // generic function to handle form events (e.g. "submit" / "reset")
@@ -68,7 +74,8 @@ class Index extends Component {
     // collect form data
     let account = event.target.account.value;
     let privateKey = event.target.privateKey.value;
-    let note = event.target.note.value;
+    let accountTwo = event.target.accountTwo.value;
+    // console.log(`private key is ${privateKey}`)
 
     // prepare variables for the switch below to send transactions
     let actionName = "";
@@ -77,10 +84,12 @@ class Index extends Component {
     // define actionName and action according to event type
     switch (event.type) {
       case "submit":
-        actionName = "update";
+        actionName = "create";
         actionData = {
           user: account,
-          note: note,
+          user_two: accountTwo,
+          stake_requirement: 100,
+          response_window: 60 * 60 * 24 * 3 // 3 days in seconds
         };
         break;
       default:
@@ -117,6 +126,66 @@ class Index extends Component {
     }
   }
 
+  async handleSendMessageFormEvent(event) {
+    // stop default behaviour
+    event.preventDefault();
+
+    // collect form data
+    let account = event.target.account.value;
+    let privateKey = event.target.privateKey.value;
+    let chatId = event.target.chatId.value;
+    let message = event.target.message.value;
+
+    // prepare variables for the switch below to send transactions
+    let actionName = "";
+    let actionData = {};
+
+    // define actionName and action according to event type
+    switch (event.type) {
+      case "submit":
+        actionName = "sendmessage";
+        actionData = {
+          user: account,
+          chat_id: chatId,
+          message: message
+        };
+        break;
+      default:
+        return;
+    }
+
+    // eosjs function call: connect to the blockchain
+    const rpc = new JsonRpc(endpoint);
+    const signatureProvider = new JsSignatureProvider([privateKey]);
+    const api = new Api({ rpc, signatureProvider, textDecoder: new TextDecoder(), textEncoder: new TextEncoder() });
+    try {
+      const result = await api.transact({
+        actions: [{
+          account: "notechainacc",
+          name: actionName,
+          authorization: [{
+            actor: account,
+            permission: 'active',
+          }],
+          data: actionData,
+        }]
+      }, {
+        blocksBehind: 3,
+        expireSeconds: 30,
+      });
+
+      console.log(result);
+      this.getTable();
+    } catch (e) {
+      console.log('Caught exception: ' + e);
+      if (e instanceof RpcError) {
+        console.log(JSON.stringify(e.json, null, 2));
+      }
+    }
+  }
+
+
+
   // gets table data from the blockchain
   // and saves it into the component state: "noteTable"
   getTable() {
@@ -125,9 +194,24 @@ class Index extends Component {
       "json": true,
       "code": "notechainacc",   // contract who owns the table
       "scope": "notechainacc",  // scope of the table
+      "table": "chatstruct",    // name of the table as specified by the contract abi
+      "limit": 100,
+    }).then(result => {
+      console.log('chats: ', result)
+      console.log('chat0: ', result.rows[0])
+      this.setState({ chats: result.rows })
+    });
+
+    rpc.get_table_rows({
+      "json": true,
+      "code": "notechainacc",   // contract who owns the table
+      "scope": "notechainacc",  // scope of the table
       "table": "notestruct",    // name of the table as specified by the contract abi
       "limit": 100,
-    }).then(result => this.setState({ noteTable: result.rows }));
+    }).then(result => {
+      console.log('messages: ', result)
+      this.setState({ noteTable: result.rows })
+    });
   }
 
   componentDidMount() {
@@ -135,27 +219,33 @@ class Index extends Component {
   }
 
   render() {
-    const { noteTable } = this.state;
+    const { noteTable, chats } = this.state;
     const { classes } = this.props;
 
     // generate each note as a card
-    const generateCard = (key, timestamp, user, note) => (
-      <Card className={classes.card} key={key}>
-        <CardContent>
-          <Typography variant="headline" component="h2">
-            {user}
-          </Typography>
-          <Typography style={{fontSize:12}} color="textSecondary" gutterBottom>
-            {new Date(timestamp*1000).toString()}
-          </Typography>
-          <Typography component="pre">
-            {note}
-          </Typography>
-        </CardContent>
-      </Card>
-    );
+    const generateCard = (key, timestamp, user, note, chat_id) => {
+      const chat = chats.find((c) => c.prim_key == chat_id);
+      if (!chat) return
+      return (
+        <Card className={classes.card} key={key}>
+          <CardContent>
+            <Typography variant="headline" component="h2">
+              {user}
+            </Typography>
+            <Typography style={{fontSize:12}} color="textSecondary" gutterBottom>
+              {`Chat ID: ${chat_id} - Between ${chat.user_one} and ${chat.user_two}`}
+              <br/>
+              {`Sent at ${new Date(timestamp*1000).toString()}`}
+            </Typography>
+            <Typography component="pre">
+              {note}
+            </Typography>
+          </CardContent>
+        </Card>
+      )
+    }
     let noteCards = noteTable.map((row, i) =>
-      generateCard(i, row.timestamp, row.user, row.note));
+      generateCard(i, row.timestamp, row.user, row.note, row.chatstruct_id));
 
     return (
       <div>
@@ -168,25 +258,82 @@ class Index extends Component {
         </AppBar>
         {noteCards}
         <Paper className={classes.paper}>
+          <h1>Create Chat</h1>
           <form onSubmit={this.handleFormEvent}>
             <TextField
               name="account"
               autoComplete="off"
-              label="Account"
+              label="From Account"
               margin="normal"
               fullWidth
+              value='useraaaaaaaa'
             />
             <TextField
               name="privateKey"
               autoComplete="off"
-              label="Private key"
+              label="From Private key"
               margin="normal"
               fullWidth
+              value='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
             />
             <TextField
+              name="accountTwo"
+              autoComplete="off"
+              label="To Account"
+              margin="normal"
+              fullWidth
+              value='useraaaaaaab'
+            />
+            {/*<TextField
               name="note"
               autoComplete="off"
               label="Note (Optional)"
+              margin="normal"
+              multiline
+              rows="10"
+              fullWidth
+            />*/}
+            <Button
+              variant="contained"
+              color="primary"
+              className={classes.formButton}
+              type="submit">
+              Create Chat
+            </Button>
+          </form>
+        </Paper>
+
+        <Paper className={classes.paper}>
+          <h1>Send Message</h1>
+          <form onSubmit={this.handleSendMessageFormEvent}>
+            <TextField
+              name="account"
+              autoComplete="off"
+              label="From Account"
+              margin="normal"
+              fullWidth
+              value='useraaaaaaaa'
+            />
+            <TextField
+              name="privateKey"
+              autoComplete="off"
+              label="From Private key"
+              margin="normal"
+              fullWidth
+              value='5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5'
+            />
+            <TextField
+              name="chatId"
+              autoComplete="off"
+              label="Chat ID"
+              margin="normal"
+              fullWidth
+              value={0}
+            />
+            <TextField
+              name="message"
+              autoComplete="off"
+              label="Message"
               margin="normal"
               multiline
               rows="10"
@@ -197,7 +344,7 @@ class Index extends Component {
               color="primary"
               className={classes.formButton}
               type="submit">
-              Add / Update note
+              Send Message
             </Button>
           </form>
         </Paper>

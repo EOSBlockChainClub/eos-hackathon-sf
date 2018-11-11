@@ -20,10 +20,23 @@ mkdir -p ~/bin && curl -sSL -o ~/bin/jq https://github.com/stedolan/jq/releases/
 # NEVER store the private key in any source code in your real life developmemnt
 # This is just for demo purpose
 
+cleos wallet create -n userwal --to-console | tail -1 | sed -e 's/^"//' -e 's/"$//' > user_wallet_password.txt
+
+# unlock the wallet, ignore error if already unlocked
+if [ ! -z $3 ]; then cleos wallet unlock -n userwal --password $(cat user_wallet_password.txt) || true; fi
+
 jq -c '.[]' accounts.json | while read i; do
   name=$(jq -r '.name' <<< "$i")
   pub=$(jq -r '.publicKey' <<< "$i")
+  priv=$(jq -r '.privateKey' <<< "$i")
+  permJson='{"threshold": 1,"keys": [{"key": "'
+  permJson+=$pub
+  permJson+='","weight": 1}],"accounts": [{"permission":{"actor":"notechainacc","permission":"eosio.code"},"weight":1}]}'
 
   # to simplify, we use the same key for owner and active key of each account
   cleos create account eosio $name $pub $pub
+
+  cleos wallet import -n userwal --private-key $priv
+
+  cleos set account permission $name active "$permJson" owner -p $name
 done

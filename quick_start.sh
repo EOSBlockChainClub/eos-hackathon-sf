@@ -19,6 +19,6 @@ do
   sleep 2s
 done
 
-#start frontend react app
-echo "[quick_start.sh] Starting frontend react app"
-./start_frontend.sh
+# #start frontend react app
+# echo "[quick_start.sh] Starting frontend react app"
+# ./start_frontend.sh
