@@ -77,13 +77,13 @@ echo "=== create user accounts ==="
 create_accounts.sh
 
 echo "=== issuing tokens ==="
-cleos push action eosio.token create '{"issuer":"eosio", "maximum_supply":"1000000000.0000 EOS"}' -p eosio.token@active
+cleos push action eosio.token create '{"issuer":"eosio", "maximum_supply":"1000000000.0000 SYS"}' -p eosio.token@active
 
 echo "=== sending tokens to acct1 ==="
-cleos push action eosio.token issue '[ "useraaaaaaaa", "100.0000 EOS", "memo" ]' -p eosio
+cleos push action eosio.token issue '[ "useraaaaaaaa", "100.0000 SYS", "memo" ]' -p eosio
 
 echo "=== sending tokens to acct2 ==="
-cleos push action eosio.token issue '[ "useraaaaaaab", "100.0000 EOS", "memo" ]' -p eosio
+cleos push action eosio.token issue '[ "useraaaaaaab", "100.0000 SYS", "memo" ]' -p eosio
 
 # cleos wallet import --private-key 5K7mtrinTFrVTduSxizUc5hjXJEtTjVTsqSHeBHes1Viep86FP5
 # cleos wallet import --private-key 5KLqT1UFxVnKRWkjvhFur4sECrPhciuUqsYRihc1p9rxhXQMZBg

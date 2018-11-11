@@ -88,8 +88,9 @@ class Index extends Component {
         actionData = {
           user: account,
           user_two: accountTwo,
-          stake_requirement: 100,
-          response_window: 60 * 60 * 24 * 3 // 3 days in seconds
+          stake_requirement: 10 * Math.pow(10,4), // 10.0000
+          response_window: 60, // 1 minute in seconds
+          expiration_time: parseInt(new Date().getTime() / 1000) + 60 * 60 // 60 minutes
         };
         break;
       default:

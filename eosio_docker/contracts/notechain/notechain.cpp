@@ -1,3 +1,5 @@
+#include <eosiolib/asset.hpp>
+#include <eosiolib/symbol.hpp>
 #include <eosiolib/eosio.hpp>
 #include <eosiolib/print.hpp>
 #include "../eosio.token/eosio.token.hpp"
@@ -37,13 +39,16 @@ CONTRACT notechain : public eosio::contract {
     TABLE chatstruct {
       uint64_t      prim_key;  // primary key
       uint64_t      stake_requirement;
-      uint64_t      response_window;
+      uint64_t      response_window; // seconds to respond to a chat
+      uint64_t      expiration_time; // the store the last update block time
 
       name          user_one;
       uint64_t      user_one_staked;
+      uint64_t      user_one_last_message_time;
 
       name          user_two;
       uint64_t      user_two_staked;
+      uint64_t      user_two_last_message_time;
 
       // primary key
       auto primary_key() const { return prim_key; }
@@ -89,37 +94,45 @@ CONTRACT notechain : public eosio::contract {
                 _chats( receiver, receiver.value ),
                 _notes( receiver, receiver.value ) {}
 
-    ACTION create( name user, name user_two, uint64_t stake_requirement, uint64_t response_window ) {
+    ACTION create( name user, name user_two, uint64_t stake_requirement, uint64_t response_window, uint64_t expiration_time ) {
       // to sign the action with the given account
       require_auth( user );
 
       print(_self);
 
       // create new / update note depends whether the user account exist or not
-      if (isnewchat(user, user_two)) {
-        // insert new chat
-        _chats.emplace( _self, [&]( auto& new_chat ) {
-          new_chat.prim_key           = _chats.available_primary_key();
-          new_chat.user_one           = user;
-          new_chat.user_two           = user_two;
-          new_chat.stake_requirement  = stake_requirement;
-          new_chat.response_window    = response_window;
-        });
-        print("Chat created\n");
-        // staking dat eos
-        // INLINE_ACTION_SENDER(eosio::token, transfer)(
-        //    name("eosio.token"),
-        //    { user, name("active") },
-        //    { user, _self, stake_requirement, std::string("Staking for user 1") }
-        // );
-        action(permission_level{ user, name("active") },
-          name("eosio.token"), name("transfer"),
-          std::make_tuple(user, _self, stake_requirement, std::string("Staking for user 1"))
-        ).send();
-        print("User one staked\n");
-      } else {
-        print("Chat not created because it already exists between these two users\n");
-      }
+      // if (isnewchat(user, user_two)) {
+      // insert new chat
+      _chats.emplace( _self, [&]( auto& new_chat ) {
+        new_chat.prim_key           = _chats.available_primary_key();
+        new_chat.user_one           = user;
+        new_chat.user_two           = user_two;
+        new_chat.stake_requirement  = stake_requirement;
+        new_chat.user_one_staked    = stake_requirement;
+        new_chat.user_two_staked    = stake_requirement;
+        new_chat.response_window    = response_window;
+        new_chat.expiration_time    = expiration_time;
+      });
+      print("Chat created\n");
+
+      // staking dat eos
+      action(
+        permission_level{ user, name("active") },
+        name("eosio.token"), name("transfer"),
+        std::make_tuple(user, _self, asset(stake_requirement, symbol(std::string("SYS"), 4)), std::string("Staking for user 1"))
+      ).send();
+      print("User one staked\n");
+
+      action(
+        permission_level{ user_two, name("active") },
+        name("eosio.token"), name("transfer"),
+        std::make_tuple(user_two, _self, asset(stake_requirement, symbol(std::string("SYS"), 4)), std::string("Staking for user 2"))
+      ).send();
+      print("User two staked\n");
+
+      // } else {
+      //   print("Chat not created because it already exists between these two users\n");
+      // }
       // } else {
       //   // get object by secordary key
       //   auto note_index = _notes.get_index<name("getbyuser")>();
@@ -139,36 +152,49 @@ CONTRACT notechain : public eosio::contract {
       // });
     }
 
-    // ACTION stake( name user, uint64_t chat_id ) {
-    //   // to sign the action with the given account
-    //   require_auth( user );
+    ACTION retrievestake( name user, uint64_t chat_id ) {
+      // to sign the action with the given account
+      require_auth( user );
 
-    //   auto chat = _chats.get(chat_id);
+      eosio_assert(doeschatwithidexist(chat_id), "Chat does not exist");
 
-    //   if (user == chat.user_one) {
-    //     chat.user_one_staked = msg.value;
-    //   } else if (user == chat.user_two) {
-    //     chat.user_two_staked = msg.value;
-    //   }
-    // }
+      auto &chat = _chats.get(chat_id);
+
+
+
+    }
 
     ACTION sendmessage( name user, uint64_t chat_id, std::string message ) {
       // to sign the action with the given account
       require_auth( user );
 
-      // auto chat = _chats.get(chat_id);
-      if (doeschatwithidexist(chat_id)) {
-        _notes.emplace( _self, [&]( auto& new_note ) {
-          new_note.prim_key       = _notes.available_primary_key();
-          new_note.user           = user;
-          new_note.note           = message;
-          new_note.timestamp      = now();
-          new_note.chatstruct_id  = chat_id;
+      eosio_assert(doeschatwithidexist(chat_id), "Chat does not exist");
+
+      auto &chat = _chats.get(chat_id);
+
+      if (user == chat.user_one) {
+        _chats.modify( chat, _self, [&]( auto& modified_user ) {
+          modified_user.user_one_last_message_time = now();
         });
-        print("Message created!\n");
+        print("user one last message time updated\n");
+      } else if (user == chat.user_two) {
+        _chats.modify( chat, _self, [&]( auto& modified_user ) {
+          modified_user.user_one_last_message_time = now();
+        });
+        print("user two last message time updated\n");
       } else {
-        print("Message not created because no chat exists.  Boo.");
+        print("neither user last message time updated :-O\n");
+        eosio_assert( false, "user sending txn is not a participant in the chat" );
       }
+
+      _notes.emplace( _self, [&]( auto& new_note ) {
+        new_note.prim_key       = _notes.available_primary_key();
+        new_note.user           = user;
+        new_note.note           = message;
+        new_note.timestamp      = now();
+        new_note.chatstruct_id  = chat_id;
+      });
+      print("Message created!\n");
     }
 
 };
